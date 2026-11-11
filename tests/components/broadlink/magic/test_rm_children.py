@@ -28,6 +28,10 @@ from homeassistant.components.broadlink.magic_helpers import (
     family_to_entry_data,
 )
 from homeassistant.components.cover import CoverEntityFeature
+from homeassistant.components.media_player import (
+    MediaPlayerDeviceClass,
+    MediaPlayerEntityFeature,
+)
 from homeassistant.const import ATTR_DEVICE_ID, ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
@@ -155,6 +159,7 @@ async def test_rm_entities_commands_and_optimistic_state(
     ids = {
         device.name: device.stable_id for device in entry.runtime_data.family.devices
     }
+    tv = entity("media_player", f"{family_id}_{ids['TV']}")
     curtain = entity("cover", f"{family_id}_{ids['Curtain A']}")
     fan = entity("fan", f"{family_id}_{ids['Fan']}")
     purifier = entity("fan", f"{family_id}_{ids['Purifier']}")
@@ -188,12 +193,26 @@ async def test_rm_entities_commands_and_optimistic_state(
             )
             is None
         )
+    assert tv.disabled_by is None
     assert (
         entity_registry.async_get_entity_id(
             "remote", DOMAIN, f"{family_id}_{ids['TV']}_remote"
         )
         is None
     )
+    tv_state = hass.states.get(tv.entity_id)
+    assert tv_state is not None
+    assert tv_state.attributes["device_class"] == MediaPlayerDeviceClass.TV
+    expected_media_classes = {
+        "TV": MediaPlayerDeviceClass.TV,
+        "Projector": MediaPlayerDeviceClass.PROJECTOR,
+        "Smart box": MediaPlayerDeviceClass.TV,
+    }
+    for name, device_class in expected_media_classes.items():
+        player = entity("media_player", f"{family_id}_{ids[name]}")
+        state = hass.states.get(player.entity_id)
+        assert state is not None
+        assert state.attributes["device_class"] == device_class
     assert all(
         "a1b2c3d4e5f6000e" not in item.unique_id
         and "a1b2c3d4e5f6000f" not in item.unique_id
@@ -240,8 +259,31 @@ async def test_rm_entities_commands_and_optimistic_state(
         "send_status_query",
         new_callable=AsyncMock,
     ) as status_query:
-        assert await call("cover", "open_cover", curtain) == b"\x01"
+        assert await call("media_player", "volume_up", tv) == b"\x11"
         status_query.assert_not_awaited()
+    assert await call("media_player", "turn_off", tv) == b"\x01"
+    assert hass.states.get(tv.entity_id).state == "off"
+    assert await call("media_player", "turn_on", tv) == b"\x01"
+    assert hass.states.get(tv.entity_id).state == "on"
+    assert await call("media_player", "volume_down", tv) == b"\x12"
+    assert (
+        await call(
+            "media_player",
+            "volume_mute",
+            tv,
+            is_volume_muted=True,
+        )
+        == b"\x03"
+    )
+    assert await call("media_player", "media_play", tv) == b"\x22"
+    assert hass.states.get(tv.entity_id).state == "playing"
+    assert await call("media_player", "media_pause", tv) == b"\x21"
+    assert hass.states.get(tv.entity_id).state == "paused"
+    assert await call("media_player", "media_stop", tv) == b"\x36"
+    assert hass.states.get(tv.entity_id).state == "idle"
+    assert await call("media_player", "media_next_track", tv) == b"\x13"
+    assert await call("media_player", "media_previous_track", tv) == b"\x14"
+    assert await call("cover", "open_cover", curtain) == b"\x01"
     assert hass.states.get(curtain.entity_id).state == "open"
     assert await call("fan", "turn_on", fan) == b"\x01"
     assert hass.states.get(fan.entity_id).state == "on"
@@ -412,12 +454,20 @@ async def test_imported_function_list_drives_rm_entities(
     def entity_id(domain: str, unique_id: str) -> str | None:
         return entity_registry.async_get_entity_id(domain, DOMAIN, unique_id)
 
+    tv = entity_id("media_player", f"rm-family_{ids['TV']}")
     drying_cover = entity_id("cover", f"rm-family_{ids['Drying rack']}")
-    assert drying_cover
+    assert tv and drying_cover
     assert entity_id("light", f"rm-family_{ids['Drying rack']}") is None
     assert entity_id("switch", f"rm-family_{ids['Relay panel']}_1")
     assert entity_id("switch", f"rm-family_{ids['Relay panel']}_2") is None
 
+    tv_features = hass.states.get(tv).attributes["supported_features"]
+    assert tv_features == (
+        MediaPlayerEntityFeature.TURN_ON
+        | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.VOLUME_STEP
+        | MediaPlayerEntityFeature.NEXT_TRACK
+    )
     assert (
         hass.states.get(drying_cover).attributes["supported_features"]
         == CoverEntityFeature.OPEN
@@ -438,4 +488,5 @@ async def test_imported_function_list_drives_rm_entities(
         )
         return mock_send.await_args.args[1][0]
 
+    assert await call("media_player", "volume_up", tv) == b"\x51"
     assert await call("cover", "open_cover", drying_cover) == b"\x01"

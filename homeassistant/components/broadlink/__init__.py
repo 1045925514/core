@@ -177,6 +177,10 @@ def _async_cleanup_stale_magic_registry_entries(
     base = family.family_id
     expected_entities: set[tuple[str, str]] = {
         *(
+            (Platform.MEDIA_PLAYER, f"{base}_{device.stable_id}")
+            for device in family.rm_remote_devices
+        ),
+        *(
             (Platform.CLIMATE, f"{base}_{device.stable_id}")
             for device in family.climate_devices
         ),
@@ -254,6 +258,7 @@ def _async_cleanup_stale_magic_registry_entries(
                 else magic_device_identifier(device.stable_id)
             )
             for device in (
+                *family.rm_remote_devices,
                 *family.rm_companion_devices,
                 *family.climate_devices,
                 *family.light_devices,

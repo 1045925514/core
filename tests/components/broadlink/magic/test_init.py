@@ -129,6 +129,8 @@ async def test_setup_devices_remote_and_unload(
         )
         is not None
     )
+    assert hass.states.get("media_player.television") is not None
+    assert hass.states.get("media_player.set_top_box") is not None
     climate_state = hass.states.get("climate.whole_home_air_conditioner")
     assert climate_state is not None
     assert climate_state.attributes["target_temp_step"] == 1.0
@@ -216,6 +218,19 @@ async def test_setup_devices_remote_and_unload(
     assert hass.states.get(switch_channel_1).state == "off"
     assert hass.states.get(switch_channel_2).state == "on"
 
+    await hass.services.async_call(
+        "media_player",
+        "volume_up",
+        {
+            ATTR_ENTITY_ID: "media_player.television",
+        },
+        blocking=True,
+    )
+    mock_send.assert_awaited_once()
+    assert mock_send.await_args.args[0] == 4660
+    assert mock_send.await_args.args[1] == [b"\x11"]
+
+    mock_send.reset_mock()
     await hass.services.async_call(
         "climate",
         "set_hvac_mode",
