@@ -38,6 +38,7 @@ MAGIC_PLATFORMS: Final = [
     Platform.COVER,
     Platform.FAN,
     Platform.LIGHT,
+    Platform.SCENE,
     Platform.SWITCH,
 ]
 

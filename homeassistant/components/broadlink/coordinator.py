@@ -7,6 +7,7 @@ from broadlink_async.magic import (
     Family,
     GatewaySet,
     ImportedDevice,
+    ImportedScene,
     encode_ac_attribute,
     encode_switch_channel,
     parse_device_upload,
@@ -178,3 +179,16 @@ class FamilyCoordinator(DataUpdateCoordinator[GatewaySet]):
     ) -> None:
         """Send one curtain command and request its reported position."""
         await self.async_send_payloads(device, [payload])
+
+    async def async_activate_scene(self, scene: ImportedScene) -> None:
+        """Activate an imported FastCon scene."""
+        try:
+            scene_id = int(scene.scene_id, 0)
+        except ValueError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_scene",
+                translation_placeholders={"scene": scene.name},
+            ) from err
+        sent = await self.gateway_set.send_scene(scene_id)
+        _ensure_sent(sent)

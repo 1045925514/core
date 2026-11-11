@@ -188,6 +188,9 @@
     "invalid_command": {
       "message": "Invalid command: {error}"
     },
+    "invalid_scene": {
+      "message": "Scene {scene} has an invalid scene ID"
+    },
     "learn_command_failed": {
       "message": "Failed to learn command {command}: {error}"
     },

@@ -70,6 +70,7 @@ async def test_setup_devices_remote_and_unload(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
     mock_send: AsyncMock,
+    mock_scene_send: AsyncMock,
     device_registry: dr.DeviceRegistry,
     entity_registry: er.EntityRegistry,
     area_registry: ar.AreaRegistry,
@@ -134,6 +135,7 @@ async def test_setup_devices_remote_and_unload(
     assert hass.states.get("light.living_room_lamp") is not None
     assert hass.states.get("light.living_room_living_room_lights") is None
     assert hass.states.get("light.living_room_all_lights") is None
+    assert hass.states.get("scene.movie") is not None
     switch_channel_1 = entity_registry.async_get_entity_id(
         "switch",
         DOMAIN,
@@ -160,8 +162,23 @@ async def test_setup_devices_remote_and_unload(
         == "Wall panel Channel 2"
     )
     assert curtain_entity_id is not None
+    scene_entity = entity_registry.async_get("scene.movie")
+    assert scene_entity is not None
+    assert scene_entity.device_id is None
+    scene_state = hass.states.get("scene.movie")
+    assert scene_state is not None
+    assert (
+        not {
+            "brightness",
+            "color_temp_kelvin",
+            "rgb_color",
+            "is_on",
+        }
+        & scene_state.attributes.keys()
+    )
     living_room_area = area_registry.async_get_area_by_name("Living room")
     assert living_room_area is not None
+    assert scene_entity.area_id == living_room_area.id
     climate_entity = entity_registry.async_get("climate.whole_home_air_conditioner")
     assert climate_entity is not None
     assert climate_entity.device_id is not None
@@ -384,6 +401,14 @@ async def test_setup_devices_remote_and_unload(
         blocking=True,
     )
     assert mock_send.await_args.args[1] == [b"\x40\x00\x00\x00\x00\xff"]
+
+    await hass.services.async_call(
+        "scene",
+        "turn_on",
+        {ATTR_ENTITY_ID: "scene.movie"},
+        blocking=True,
+    )
+    mock_scene_send.assert_awaited_once_with(193)
 
     with pytest.raises(HomeAssistantError) as err:
         await coordinator.async_send_light(

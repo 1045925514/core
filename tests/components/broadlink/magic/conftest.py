@@ -165,6 +165,17 @@ def mock_send() -> Generator[AsyncMock]:
 
 
 @pytest.fixture(autouse=True)
+def mock_scene_send() -> Generator[AsyncMock]:
+    """Avoid real scene UDP control in tests."""
+    with patch(
+        "broadlink_async.magic.GatewaySet.send_scene",
+        new_callable=AsyncMock,
+        return_value=2,
+    ) as mock:
+        yield mock
+
+
+@pytest.fixture(autouse=True)
 def mock_gateway_listener() -> Generator[MagicMock]:
     """Avoid binding the fixed gateway UDP port in component tests."""
     manager = MagicMock()

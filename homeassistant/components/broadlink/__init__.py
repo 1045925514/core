@@ -194,6 +194,7 @@ def _async_cleanup_stale_magic_registry_entries(
             (Platform.COVER, f"{base}_{device.stable_id}")
             for device in family.curtain_devices
         ),
+        *((Platform.SCENE, f"{base}_{scene.scene_id}") for scene in family.scenes),
     }
     entity_registry = er.async_get(hass)
     for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
