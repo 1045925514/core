@@ -9,6 +9,7 @@ from broadlink_async.magic import (
     ImportedDevice,
     ImportedScene,
     encode_ac_attribute,
+    encode_profile_commands,
     encode_switch_channel,
     parse_device_upload,
 )
@@ -114,6 +115,25 @@ class FamilyCoordinator(DataUpdateCoordinator[GatewaySet]):
         """Expire stale inbound sessions without blocking offline setup."""
         self.gateway_set.expire_sessions()
         return self.gateway_set
+
+    async def async_send_rm_commands(
+        self,
+        device: ImportedDevice,
+        commands: list[str],
+    ) -> None:
+        """Send stateless named commands for an RM child profile."""
+        short_addr = _short_addr(device)
+        if device.rm_profile is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="device_not_addressable",
+                translation_placeholders={"device": device.name},
+            )
+        payloads = encode_profile_commands(
+            device.rm_profile, commands, device.functions
+        )
+        sent = await self.gateway_set.send_remote_payloads(short_addr, payloads)
+        _ensure_sent(sent)
 
     async def async_send_ac(
         self,

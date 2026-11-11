@@ -1,4 +1,4 @@
-"""Fan entities for BroadLink Magic fresh-air loads."""
+"""Fan entities for BroadLink Magic RM children and fresh-air loads."""
 
 from typing import Any, override
 
@@ -13,6 +13,7 @@ from broadlink_async.magic import (
     FRESH_AIR_MODE_SMART,
     FRESH_AIR_MODE_TURBO,
     ImportedDevice,
+    RMProfile,
     encode_fresh_air_attribute,
 )
 
@@ -25,7 +26,7 @@ from homeassistant.util.percentage import (
     percentage_to_ordered_list_item,
 )
 
-from .const import DOMAIN, magic_device_identifier
+from .const import DOMAIN, magic_device_identifier, magic_rm_device_identifier
 from .coordinator import BroadLinkMagicConfigEntry, FamilyCoordinator
 from .entity import BroadLinkMagicEntity, PendingCommands
 
@@ -48,12 +49,75 @@ async def async_setup_entry(
     entry: BroadLinkMagicConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up fresh-air loads of three-in-one panels."""
+    """Set up RM fans, purifiers and fresh-air loads."""
     coordinator = entry.runtime_data
-    async_add_entities(
+    entities: list[FanEntity] = [
+        BroadLinkMagicRMFan(coordinator, device)
+        for device in (
+            *coordinator.family.rm_fan_devices,
+            *(
+                device
+                for device in coordinator.family.rm_power_devices
+                if device.rm_profile is RMProfile.PURIFIER
+            ),
+        )
+    ]
+    entities.extend(
         BroadLinkMagicFreshAir(coordinator, device)
         for device in coordinator.family.three_in_one_devices
     )
+    async_add_entities(entities)
+
+
+class BroadLinkMagicRMFan(BroadLinkMagicEntity, FanEntity):
+    """An optimistic power-only RM fan."""
+
+    _attr_assumed_state = True
+    _attr_is_on = False
+    _attr_name = None
+    _attr_percentage = 0
+    _attr_speed_count = 1
+    _attr_supported_features = FanEntityFeature.TURN_ON | FanEntityFeature.TURN_OFF
+
+    def __init__(
+        self,
+        coordinator: FamilyCoordinator,
+        device: ImportedDevice,
+    ) -> None:
+        """Initialize an RM fan."""
+        super().__init__(coordinator)
+        self._device = device
+        assert device.rm_profile is not None
+        self._attr_unique_id = f"{coordinator.family.family_id}_{device.stable_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, magic_rm_device_identifier(device.stable_id))},
+            manufacturer="BroadLink",
+            model=f"Magic Home RM {device.rm_profile.value.title()}",
+            name=device.name,
+            suggested_area=coordinator.room_name(device.room_id),
+            via_device_id=self._family_device_id(),
+        )
+
+    async def _async_set_state(self, on: bool) -> None:
+        await self.coordinator.async_send_rm_commands(self._device, ["power"])
+        self._attr_is_on = on
+        self._attr_percentage = 100 if on else 0
+        self.async_write_ha_state()
+
+    @override
+    async def async_turn_on(
+        self,
+        percentage: int | None = None,
+        preset_mode: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Toggle the RM fan on."""
+        await self._async_set_state(True)
+
+    @override
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Toggle the RM fan off."""
+        await self._async_set_state(False)
 
 
 class BroadLinkMagicFreshAir(BroadLinkMagicEntity, FanEntity):

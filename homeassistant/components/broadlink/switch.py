@@ -5,7 +5,7 @@ import logging
 from typing import Any, override
 
 from broadlink_async.exceptions import BroadlinkException
-from broadlink_async.magic import DeviceKind, ImportedDevice
+from broadlink_async.magic import DeviceKind, ImportedDevice, RMProfile
 import probatio
 
 from homeassistant.components.switch import (
@@ -47,11 +47,13 @@ from .const import (
     DOMAINS_AND_TYPES,
     is_magic_entry,
     magic_device_identifier,
+    magic_rm_device_identifier,
 )
 from .coordinator import BroadLinkMagicConfigEntry, FamilyCoordinator
 from .device import BroadlinkDevice
 from .entity import BroadlinkEntity, BroadLinkMagicEntity
 from .helpers import data_packet, import_device, mac_address
+from .magic_helpers import rm_relay_channels
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -333,9 +335,34 @@ async def _async_setup_magic_entry(
     """Set up imported switch panels and plugs."""
     coordinator = entry.runtime_data
     async_add_entities(
-        BroadLinkMagicSwitch(coordinator, device, channel)
-        for device in coordinator.family.switch_devices
-        for channel in range(device.channel_count)
+        [
+            *(
+                BroadLinkMagicSwitch(
+                    coordinator,
+                    device,
+                    channel,
+                )
+                for device in coordinator.family.switch_devices
+                for channel in range(device.channel_count)
+            ),
+            *(
+                BroadLinkMagicRMPowerSwitch(
+                    coordinator,
+                    device,
+                )
+                for device in coordinator.family.rm_power_devices
+                if device.rm_profile in {RMProfile.WATER_HEATER, RMProfile.HUMIDIFIER}
+            ),
+            *(
+                BroadLinkMagicRMRelaySwitch(
+                    coordinator,
+                    device,
+                    channel,
+                )
+                for device in coordinator.family.rm_relay_devices
+                for channel in rm_relay_channels(device)
+            ),
+        ]
     )
 
 
@@ -426,3 +453,92 @@ class BroadLinkMagicSwitch(BroadLinkMagicEntity, SwitchEntity):
         )
         self._attr_is_on = False
         self.async_write_ha_state()
+
+
+class BroadLinkMagicRMPowerSwitch(BroadLinkMagicEntity, SwitchEntity):
+    """An optimistic power toggle for an RM appliance."""
+
+    _attr_assumed_state = True
+    _attr_is_on = False
+    _attr_translation_key = "power"
+
+    def __init__(
+        self,
+        coordinator: FamilyCoordinator,
+        device: ImportedDevice,
+    ) -> None:
+        """Initialize an RM appliance power switch."""
+        super().__init__(coordinator)
+        self._device = device
+        assert device.rm_profile is not None
+        self._attr_unique_id = f"{coordinator.family.family_id}_{device.stable_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, magic_rm_device_identifier(device.stable_id))},
+            manufacturer="BroadLink",
+            model=f"Magic Home RM {device.rm_profile.value.replace('_', ' ').title()}",
+            name=device.name,
+            suggested_area=coordinator.room_name(device.room_id),
+            via_device_id=self._family_device_id(),
+        )
+
+    async def _async_toggle(self, on: bool) -> None:
+        await self.coordinator.async_send_rm_commands(self._device, ["power"])
+        self._attr_is_on = on
+        self.async_write_ha_state()
+
+    @override
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Toggle power on optimistically."""
+        await self._async_toggle(True)
+
+    @override
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Toggle power off optimistically."""
+        await self._async_toggle(False)
+
+
+class BroadLinkMagicRMRelaySwitch(BroadLinkMagicEntity, SwitchEntity):
+    """One optimistic channel of an RM relay panel."""
+
+    _attr_assumed_state = True
+    _attr_is_on = False
+
+    def __init__(
+        self,
+        coordinator: FamilyCoordinator,
+        device: ImportedDevice,
+        channel: int,
+    ) -> None:
+        """Initialize one fixed relay channel."""
+        super().__init__(coordinator)
+        self._device = device
+        self._channel = channel
+        self._attr_translation_key = "channel"
+        self._attr_translation_placeholders = {"channel": str(channel)}
+        self._attr_unique_id = (
+            f"{coordinator.family.family_id}_{device.stable_id}_{channel}"
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, magic_rm_device_identifier(device.stable_id))},
+            manufacturer="BroadLink",
+            model="Magic Home RM Relay Panel",
+            name=device.name,
+            suggested_area=coordinator.room_name(device.room_id),
+            via_device_id=self._family_device_id(),
+        )
+
+    async def _async_set_state(self, on: bool) -> None:
+        command = f"channel_{self._channel}_{'on' if on else 'off'}"
+        await self.coordinator.async_send_rm_commands(self._device, [command])
+        self._attr_is_on = on
+        self.async_write_ha_state()
+
+    @override
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on this relay channel."""
+        await self._async_set_state(True)
+
+    @override
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off this relay channel."""
+        await self._async_set_state(False)

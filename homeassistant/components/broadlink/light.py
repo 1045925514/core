@@ -25,9 +25,16 @@ from homeassistant.helpers import area_registry as ar, device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import BROADLINK_DATA, DOMAIN, is_magic_entry, magic_device_identifier
+from .const import (
+    BROADLINK_DATA,
+    DOMAIN,
+    is_magic_entry,
+    magic_device_identifier,
+    magic_rm_device_identifier,
+)
 from .coordinator import BroadLinkMagicConfigEntry, FamilyCoordinator
 from .entity import BroadlinkEntity, BroadLinkMagicEntity
+from .magic_helpers import rm_drying_rack_has_light
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -160,8 +167,29 @@ async def _async_setup_magic_entry(
     """Set up imported lights and light groups."""
     coordinator = entry.runtime_data
     async_add_entities(
-        BroadLinkMagicLight(coordinator, device)
-        for device in coordinator.family.light_devices
+        [
+            *(
+                BroadLinkMagicLight(coordinator, device)
+                for device in coordinator.family.light_devices
+            ),
+            *(
+                BroadLinkMagicRMLight(
+                    coordinator,
+                    device,
+                    drying_rack=False,
+                )
+                for device in coordinator.family.rm_light_devices
+            ),
+            *(
+                BroadLinkMagicRMLight(
+                    coordinator,
+                    device,
+                    drying_rack=True,
+                )
+                for device in coordinator.family.rm_drying_rack_devices
+                if rm_drying_rack_has_light(device)
+            ),
+        ]
     )
 
 
@@ -343,3 +371,54 @@ class BroadLinkMagicLight(_BroadLinkMagicLightBase):
     @override
     async def _async_send(self, payload: bytes) -> None:
         await self.coordinator.async_send_light(self._device, payload)
+
+
+class BroadLinkMagicRMLight(BroadLinkMagicEntity, LightEntity):
+    """An optimistic RM light or drying-rack light."""
+
+    _attr_assumed_state = True
+    _attr_color_mode = ColorMode.ONOFF
+    _attr_is_on = False
+    _attr_supported_color_modes = {ColorMode.ONOFF}
+
+    def __init__(
+        self,
+        coordinator: FamilyCoordinator,
+        device: ImportedDevice,
+        *,
+        drying_rack: bool,
+    ) -> None:
+        """Initialize an RM light."""
+        super().__init__(coordinator)
+        self._device = device
+        self._on_command = "light_on" if drying_rack else "turn_on"
+        self._off_command = "light_off" if drying_rack else "turn_off"
+        if drying_rack:
+            self._attr_translation_key = "drying_rack_light"
+        else:
+            self._attr_name = None
+        self._attr_unique_id = f"{coordinator.family.family_id}_{device.stable_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, magic_rm_device_identifier(device.stable_id))},
+            manufacturer="BroadLink",
+            model=(
+                "Magic Home RM Drying Rack" if drying_rack else "Magic Home RM Light"
+            ),
+            name=device.name,
+            suggested_area=coordinator.room_name(device.room_id),
+            via_device_id=self._family_device_id(),
+        )
+
+    @override
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the RM light."""
+        await self.coordinator.async_send_rm_commands(self._device, [self._on_command])
+        self._attr_is_on = True
+        self.async_write_ha_state()
+
+    @override
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the RM light."""
+        await self.coordinator.async_send_rm_commands(self._device, [self._off_command])
+        self._attr_is_on = False
+        self.async_write_ha_state()

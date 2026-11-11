@@ -22,9 +22,10 @@ from homeassistant.helpers import area_registry as ar, device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN, magic_device_identifier
+from .const import DOMAIN, magic_device_identifier, magic_rm_device_identifier
 from .coordinator import BroadLinkMagicConfigEntry, FamilyCoordinator
 from .entity import BroadLinkMagicEntity
+from .magic_helpers import rm_command_supported
 
 PARALLEL_UPDATES = 1
 
@@ -40,8 +41,28 @@ async def async_setup_entry(
     """Set up imported curtain motors."""
     coordinator = entry.runtime_data
     async_add_entities(
-        BroadLinkMagicCurtain(coordinator, device)
-        for device in coordinator.family.curtain_devices
+        [
+            *(
+                BroadLinkMagicCurtain(coordinator, device)
+                for device in coordinator.family.curtain_devices
+            ),
+            *(
+                BroadLinkMagicRMCover(
+                    coordinator,
+                    device,
+                    drying_rack=False,
+                )
+                for device in coordinator.family.rm_curtain_devices
+            ),
+            *(
+                BroadLinkMagicRMCover(
+                    coordinator,
+                    device,
+                    drying_rack=True,
+                )
+                for device in coordinator.family.rm_drying_rack_devices
+            ),
+        ]
     )
 
 
@@ -152,3 +173,72 @@ class BroadLinkMagicCurtain(BroadLinkMagicEntity, CoverEntity):
             encode_curtain_position(position),
         )
         self._set_optimistic_state(position)
+
+
+class BroadLinkMagicRMCover(BroadLinkMagicEntity, CoverEntity):
+    """An optimistic RM curtain or drying-rack cover."""
+
+    _attr_assumed_state = True
+    _attr_current_cover_position = 0
+    _attr_device_class = CoverDeviceClass.CURTAIN
+    _attr_is_closed = True
+    _attr_name = None
+
+    def __init__(
+        self,
+        coordinator: FamilyCoordinator,
+        device: ImportedDevice,
+        *,
+        drying_rack: bool,
+    ) -> None:
+        """Initialize an RM cover."""
+        super().__init__(coordinator)
+        self._device = device
+        self._open_command = "up" if drying_rack else "open"
+        self._close_command = "down" if drying_rack else "close"
+        features = CoverEntityFeature(0)
+        for feature, command in (
+            (CoverEntityFeature.OPEN, self._open_command),
+            (CoverEntityFeature.CLOSE, self._close_command),
+            (CoverEntityFeature.STOP, "stop"),
+        ):
+            if rm_command_supported(device, command):
+                features |= feature
+        self._attr_supported_features = features
+        self._attr_unique_id = f"{coordinator.family.family_id}_{device.stable_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, magic_rm_device_identifier(device.stable_id))},
+            manufacturer="BroadLink",
+            model=(
+                "Magic Home RM Drying Rack" if drying_rack else "Magic Home RM Curtain"
+            ),
+            name=device.name,
+            suggested_area=coordinator.room_name(device.room_id),
+            via_device_id=self._family_device_id(),
+        )
+
+    def _set_closed(self, closed: bool) -> None:
+        self._attr_is_closed = closed
+        self._attr_current_cover_position = 0 if closed else 100
+        self.async_write_ha_state()
+
+    @override
+    async def async_open_cover(self, **kwargs: Any) -> None:
+        """Open or raise the RM cover."""
+        await self.coordinator.async_send_rm_commands(
+            self._device, [self._open_command]
+        )
+        self._set_closed(False)
+
+    @override
+    async def async_close_cover(self, **kwargs: Any) -> None:
+        """Close or lower the RM cover."""
+        await self.coordinator.async_send_rm_commands(
+            self._device, [self._close_command]
+        )
+        self._set_closed(True)
+
+    @override
+    async def async_stop_cover(self, **kwargs: Any) -> None:
+        """Stop the RM cover."""
+        await self.coordinator.async_send_rm_commands(self._device, ["stop"])

@@ -1,0 +1,13 @@
+send_rm_command:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          filter:
+            integration: broadlink
+    command:
+      required: true
+      example: menu
+      selector:
+        text:

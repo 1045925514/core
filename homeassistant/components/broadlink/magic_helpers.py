@@ -12,6 +12,7 @@ from broadlink_async.magic import (
     Room,
     VirtualSubToken,
     mark_rm_children,
+    supports_profile_command,
 )
 
 from .const import (
@@ -27,6 +28,30 @@ from .const import (
     CONF_SCENES,
     CONF_VIRTUAL_SUBTOKENS,
 )
+
+
+def rm_command_supported(device: ImportedDevice, command: str) -> bool:
+    """Return whether an RM child device can send a named command."""
+    return device.rm_profile is not None and supports_profile_command(
+        device.rm_profile, command, device.functions
+    )
+
+
+def rm_relay_channels(device: ImportedDevice) -> list[int]:
+    """Return the relay-panel channels that have both on and off keys."""
+    return [
+        channel
+        for channel in range(1, 4)
+        if rm_command_supported(device, f"channel_{channel}_on")
+        and rm_command_supported(device, f"channel_{channel}_off")
+    ]
+
+
+def rm_drying_rack_has_light(device: ImportedDevice) -> bool:
+    """Return whether a drying rack has light keys."""
+    return rm_command_supported(device, "light_on") and rm_command_supported(
+        device, "light_off"
+    )
 
 
 def family_to_entry_data(

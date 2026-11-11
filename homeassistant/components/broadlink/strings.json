@@ -113,6 +113,11 @@
         "name": "IR emitter"
       }
     },
+    "light": {
+      "drying_rack_light": {
+        "name": "[%key:component::light::title%]"
+      }
+    },
     "number": {
       "max_temp": {
         "name": "Maximum setpoint"
@@ -157,6 +162,9 @@
     "switch": {
       "channel": {
         "name": "Channel {channel}"
+      },
+      "power": {
+        "name": "Power"
       }
     }
   },
@@ -200,6 +208,12 @@
     "rf_not_supported": {
       "message": "{entity_id} doesn't support RF commands"
     },
+    "rm_command_not_supported": {
+      "message": "Command {command} is not supported by {device}"
+    },
+    "rm_device_not_found": {
+      "message": "No supported RM child device was found for target {device_id}"
+    },
     "send_command_failed": {
       "message": "Failed to send command: {error}"
     },
@@ -217,6 +231,22 @@
     },
     "update_failed": {
       "message": "Failed to update the device"
+    }
+  },
+  "services": {
+    "send_rm_command": {
+      "description": "Sends a key of an RM child device through its RM MAX gateway.",
+      "fields": {
+        "command": {
+          "description": "Name of a key in the device's imported key list, such as menu.",
+          "name": "Key"
+        },
+        "device_id": {
+          "description": "The RM child device that sends the key.",
+          "name": "Device"
+        }
+      },
+      "name": "Send RM command"
     }
   }
 }

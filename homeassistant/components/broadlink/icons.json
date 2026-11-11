@@ -10,5 +10,10 @@
         "default": "mdi:air-filter"
       }
     }
+  },
+  "services": {
+    "send_rm_command": {
+      "service": "mdi:remote"
+    }
   }
 }

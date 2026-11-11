@@ -1,6 +1,6 @@
 """The Broadlink integration."""
 
-from broadlink_async.magic import Family, GatewaySet
+from broadlink_async.magic import Family, GatewaySet, RMProfile
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
@@ -30,7 +30,13 @@ from .coordinator import BroadLinkMagicConfigEntry, FamilyCoordinator
 from .device import BroadlinkDevice
 from .heartbeat import BroadlinkHeartbeat
 from .magic_gateway_listener import async_get_gateway_listener
-from .magic_helpers import family_from_entry_data, gateways_from_entry_data
+from .magic_helpers import (
+    family_from_entry_data,
+    gateways_from_entry_data,
+    rm_drying_rack_has_light,
+    rm_relay_channels,
+)
+from .services import async_setup_services
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -38,6 +44,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Broadlink integration."""
     hass.data[BROADLINK_DATA] = BroadlinkData()
+    async_setup_services(hass)
     return True
 
 
@@ -183,7 +190,15 @@ def _async_cleanup_stale_magic_registry_entries(
         ),
         *(
             (Platform.LIGHT, f"{base}_{device.stable_id}")
-            for device in family.light_devices
+            for device in (
+                *family.light_devices,
+                *family.rm_light_devices,
+                *(
+                    device
+                    for device in family.rm_drying_rack_devices
+                    if rm_drying_rack_has_light(device)
+                ),
+            )
         ),
         *(
             (Platform.SWITCH, f"{base}_{device.stable_id}_{channel}")
@@ -192,7 +207,32 @@ def _async_cleanup_stale_magic_registry_entries(
         ),
         *(
             (Platform.COVER, f"{base}_{device.stable_id}")
-            for device in family.curtain_devices
+            for device in (
+                *family.curtain_devices,
+                *family.rm_curtain_devices,
+                *family.rm_drying_rack_devices,
+            )
+        ),
+        *(
+            (Platform.FAN, f"{base}_{device.stable_id}")
+            for device in (
+                *family.rm_fan_devices,
+                *(
+                    device
+                    for device in family.rm_power_devices
+                    if device.rm_profile is RMProfile.PURIFIER
+                ),
+            )
+        ),
+        *(
+            (Platform.SWITCH, f"{base}_{device.stable_id}")
+            for device in family.rm_power_devices
+            if device.rm_profile in {RMProfile.WATER_HEATER, RMProfile.HUMIDIFIER}
+        ),
+        *(
+            (Platform.SWITCH, f"{base}_{device.stable_id}_{channel}")
+            for device in family.rm_relay_devices
+            for channel in rm_relay_channels(device)
         ),
         *((Platform.SCENE, f"{base}_{scene.scene_id}") for scene in family.scenes),
     }
@@ -214,6 +254,7 @@ def _async_cleanup_stale_magic_registry_entries(
                 else magic_device_identifier(device.stable_id)
             )
             for device in (
+                *family.rm_companion_devices,
                 *family.climate_devices,
                 *family.light_devices,
                 *family.switch_devices,
