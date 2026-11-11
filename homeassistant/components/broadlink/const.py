@@ -36,6 +36,7 @@ UPDATE_INTERVAL: Final = timedelta(seconds=60)
 MAGIC_PLATFORMS: Final = [
     Platform.CLIMATE,
     Platform.COVER,
+    Platform.FAN,
     Platform.LIGHT,
     Platform.SWITCH,
 ]

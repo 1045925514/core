@@ -10,7 +10,7 @@ from pytest_homeassistant.common import MockConfigEntry
 from homeassistant.components.broadlink.const import DOMAIN
 from homeassistant.components.broadlink.entity import PENDING_COMMAND_TIMEOUT
 from homeassistant.components.climate import HVACMode
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
@@ -54,18 +54,20 @@ async def test_three_in_one_panel(
     device_registry: dr.DeviceRegistry,
     entity_registry: er.EntityRegistry,
 ) -> None:
-    """Test the AC and floor-heating loads of one panel."""
+    """Test the AC, floor-heating and fresh-air loads of one panel."""
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
     ac = _entity_id(entity_registry, "climate", "")
     floor = _entity_id(entity_registry, "climate", "_floor_heating")
+    fresh = _entity_id(entity_registry, "fan", "_fresh_air")
     ac_entry = entity_registry.async_get(ac)
     assert ac_entry is not None
     assert ac_entry.device_id is not None
-    floor_entry = entity_registry.async_get(floor)
-    assert floor_entry is not None
-    assert floor_entry.device_id == ac_entry.device_id
+    for entity_id in (floor, fresh):
+        entry = entity_registry.async_get(entity_id)
+        assert entry is not None
+        assert entry.device_id == ac_entry.device_id
     panel = device_registry.async_get(ac_entry.device_id)
     assert panel is not None
     assert panel.model == "Magic Home 3-in-1 Thermostat"
@@ -90,6 +92,11 @@ async def test_three_in_one_panel(
     assert floor_state.state == HVACMode.HEAT
     assert floor_state.attributes["temperature"] == 23
     assert floor_state.attributes["current_temperature"] == 20
+    fresh_state = hass.states.get(fresh)
+    assert fresh_state is not None
+    assert fresh_state.state == STATE_ON
+    assert fresh_state.attributes["percentage"] == 66
+    assert fresh_state.attributes["preset_mode"] == "fresh_air"
 
     coordinator._handle_fastcon_report(PANEL_ADDR, CAPABILITIES)
     await hass.async_block_till_done()
@@ -121,6 +128,49 @@ async def test_three_in_one_panel(
     assert hass.states.get(floor).state == HVACMode.OFF
     await assert_sent("climate", "turn_on", {ATTR_ENTITY_ID: floor}, [b"\x00\x01\x03"])
     assert hass.states.get(floor).state == HVACMode.HEAT
+
+    await assert_sent("fan", "turn_off", {ATTR_ENTITY_ID: fresh}, [b"\x00\x01\x04"])
+    assert hass.states.get(fresh).state == STATE_OFF
+    await assert_sent(
+        "fan",
+        "set_percentage",
+        {ATTR_ENTITY_ID: fresh, "percentage": 100},
+        [b"\x00\x01\x05", b"\x03\x01\x30"],
+    )
+    fresh_state = hass.states.get(fresh)
+    assert fresh_state.state == STATE_ON
+    assert fresh_state.attributes["percentage"] == 100
+    await assert_sent(
+        "fan",
+        "set_preset_mode",
+        {ATTR_ENTITY_ID: fresh, "preset_mode": "turbo"},
+        [b"\x01\x01\x40"],
+    )
+    await assert_sent("fan", "turn_off", {ATTR_ENTITY_ID: fresh}, [b"\x00\x01\x04"])
+    assert hass.states.get(fresh).state == STATE_OFF
+    await assert_sent(
+        "fan",
+        "set_preset_mode",
+        {ATTR_ENTITY_ID: fresh, "preset_mode": "purify"},
+        [b"\x00\x01\x05", b"\x01\x01\x60"],
+    )
+    assert hass.states.get(fresh).state == STATE_ON
+    await assert_sent("fan", "turn_off", {ATTR_ENTITY_ID: fresh}, [b"\x00\x01\x04"])
+    await assert_sent(
+        "fan",
+        "turn_on",
+        {ATTR_ENTITY_ID: fresh, "percentage": 33, "preset_mode": "sleep"},
+        [b"\x00\x01\x05", b"\x03\x01\x10", b"\x01\x01\x50"],
+    )
+    fresh_state = hass.states.get(fresh)
+    assert fresh_state.state == STATE_ON
+    assert fresh_state.attributes["preset_mode"] == "sleep"
+    await assert_sent(
+        "fan",
+        "set_percentage",
+        {ATTR_ENTITY_ID: fresh, "percentage": 0},
+        [b"\x00\x01\x04"],
+    )
 
     await assert_sent(
         "climate",

@@ -174,8 +174,12 @@ def _async_cleanup_stale_magic_registry_entries(
             for device in family.climate_devices
         ),
         *(
-            (Platform.CLIMATE, f"{base}_{device.stable_id}_floor_heating")
+            (platform, f"{base}_{device.stable_id}_{load}")
             for device in family.three_in_one_devices
+            for platform, load in (
+                (Platform.CLIMATE, "floor_heating"),
+                (Platform.FAN, "fresh_air"),
+            )
         ),
         *(
             (Platform.LIGHT, f"{base}_{device.stable_id}")

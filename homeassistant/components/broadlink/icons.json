@@ -4,6 +4,11 @@
       "floor_heating": {
         "default": "mdi:heating-coil"
       }
+    },
+    "fan": {
+      "fresh_air": {
+        "default": "mdi:air-filter"
+      }
     }
   }
 }

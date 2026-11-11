@@ -91,6 +91,23 @@
         "name": "Floor heating"
       }
     },
+    "fan": {
+      "fresh_air": {
+        "name": "Fresh air",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "cool": "Cool",
+              "fresh_air": "Fresh air",
+              "purify": "Purify",
+              "sleep": "Sleep",
+              "smart": "Smart",
+              "turbo": "Turbo"
+            }
+          }
+        }
+      }
+    },
     "infrared": {
       "infrared_emitter": {
         "name": "IR emitter"
