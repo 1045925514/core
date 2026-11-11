@@ -238,7 +238,7 @@
       "description": "Sends a key of an RM child device through its RM MAX gateway.",
       "fields": {
         "command": {
-          "description": "Name of a key in the device's imported key list, such as menu.",
+          "description": "Name of a key in the device's imported key list, or the name of a learned key, such as menu.",
           "name": "Key"
         },
         "device_id": {

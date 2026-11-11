@@ -242,6 +242,11 @@ def _async_cleanup_stale_magic_registry_entries(
             for device in family.rm_relay_devices
             for channel in rm_relay_channels(device)
         ),
+        *(
+            (Platform.BUTTON, f"{base}_{device.stable_id}_key_{code}")
+            for device in family.rm_learned_devices
+            for code in device.functions.values()
+        ),
         *((Platform.SCENE, f"{base}_{scene.scene_id}") for scene in family.scenes),
     }
     entity_registry = er.async_get(hass)
@@ -264,6 +269,7 @@ def _async_cleanup_stale_magic_registry_entries(
             for device in (
                 *family.rm_remote_devices,
                 *family.rm_companion_devices,
+                *family.rm_learned_devices,
                 *family.climate_devices,
                 *family.light_devices,
                 *family.switch_devices,

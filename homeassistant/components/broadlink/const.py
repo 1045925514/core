@@ -34,6 +34,7 @@ IMPORT_TIMEOUT: Final = 180
 UPDATE_INTERVAL: Final = timedelta(seconds=60)
 
 MAGIC_PLATFORMS: Final = [
+    Platform.BUTTON,
     Platform.CLIMATE,
     Platform.COVER,
     Platform.FAN,

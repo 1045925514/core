@@ -412,7 +412,7 @@ async def test_imported_function_list_drives_rm_entities(
     mock_send: AsyncMock,
     entity_registry: er.EntityRegistry,
 ) -> None:
-    """Test imported functionList codes and feature filtering."""
+    """Test imported functionList codes, feature filtering, and learned keys."""
     entry = _entry_for_devices(
         [
             {
@@ -463,7 +463,8 @@ async def test_imported_function_list_drives_rm_entities(
 
     tv = entity_id("media_player", f"rm-family_{ids['TV']}")
     drying_cover = entity_id("cover", f"rm-family_{ids['Drying rack']}")
-    assert tv and drying_cover
+    learned = entity_id("button", f"rm-family_{ids['Learned IR']}_key_1")
+    assert tv and drying_cover and learned
     assert entity_id("light", f"rm-family_{ids['Drying rack']}") is None
     assert entity_id("switch", f"rm-family_{ids['Relay panel']}_1")
     assert entity_id("switch", f"rm-family_{ids['Relay panel']}_2") is None
@@ -479,6 +480,8 @@ async def test_imported_function_list_drives_rm_entities(
         hass.states.get(drying_cover).attributes["supported_features"]
         == CoverEntityFeature.OPEN
     )
+    assert hass.states.get(learned).attributes["friendly_name"] == "Learned IR 红外开关"
+
     coordinator = entry.runtime_data
     coordinator.gateway_set.handle_packet(
         "a1b2c3d4e5f6",
@@ -497,3 +500,14 @@ async def test_imported_function_list_drives_rm_entities(
 
     assert await call("media_player", "volume_up", tv) == b"\x51"
     assert await call("cover", "open_cover", drying_cover) == b"\x01"
+    assert await call("button", "press", learned) == b"\x01"
+
+    learned_device_id = entity_registry.async_get(learned).device_id
+    mock_send.reset_mock()
+    await hass.services.async_call(
+        DOMAIN,
+        "send_rm_command",
+        {ATTR_DEVICE_ID: [learned_device_id], "command": "红外开关"},
+        blocking=True,
+    )
+    assert mock_send.await_args.args[1][0] == b"\x01"
