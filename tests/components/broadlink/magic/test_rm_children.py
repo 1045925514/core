@@ -32,6 +32,7 @@ from homeassistant.components.media_player import (
     MediaPlayerDeviceClass,
     MediaPlayerEntityFeature,
 )
+from homeassistant.components.vacuum import VacuumActivity
 from homeassistant.const import ATTR_DEVICE_ID, ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
@@ -166,6 +167,7 @@ async def test_rm_entities_commands_and_optimistic_state(
     rm_light = entity("light", f"{family_id}_{ids['RM light']}")
     heater = entity("switch", f"{family_id}_{ids['Water heater']}")
     humidifier = entity("switch", f"{family_id}_{ids['Humidifier']}")
+    vacuum = entity("vacuum", f"{family_id}_{ids['Vacuum']}")
     drying_cover = entity("cover", f"{family_id}_{ids['Drying rack']}")
     drying_light = entity("light", f"{family_id}_{ids['Drying rack']}")
     relay_1 = entity("switch", f"{family_id}_{ids['Relay panel']}_1")
@@ -292,6 +294,10 @@ async def test_rm_entities_commands_and_optimistic_state(
     assert hass.states.get(rm_light.entity_id).state == "on"
     assert await call("switch", "turn_on", heater) == b"\x01"
     assert await call("switch", "turn_off", humidifier) == b"\x01"
+    assert await call("vacuum", "start", vacuum) == b"\x3d"
+    assert hass.states.get(vacuum.entity_id).state == VacuumActivity.CLEANING
+    assert await call("vacuum", "return_to_base", vacuum) == b"\x3b"
+    assert hass.states.get(vacuum.entity_id).state == VacuumActivity.RETURNING
     assert await call("cover", "open_cover", drying_cover) == b"\x01"
     assert await call("light", "turn_on", drying_light) == b"\x07"
     assert await call("switch", "turn_off", relay_1) == b"\x10"
@@ -315,6 +321,7 @@ async def test_rm_entities_commands_and_optimistic_state(
         )
         return mock_send.await_args.args[1][0]
 
+    assert await call_rm_action(vacuum, "power") == b"\x01"
     assert await call_rm_action(fan, "oscillate") == b"\x02"
     assert await call_rm_action(relay_1, "all_off") == b"\xf0"
 
@@ -338,7 +345,7 @@ async def test_send_rm_command_rejects_invalid_targets(
         assert registry_device is not None
         return registry_device.id
 
-    fan_id = device_id(magic_rm_device_identifier(devices["Fan"].stable_id))
+    vacuum_id = device_id(magic_rm_device_identifier(devices["Vacuum"].stable_id))
     ble_light_id = device_id(magic_device_identifier(devices["BLE light"].stable_id))
 
     async def send(target: str, command: str = "power") -> None:
@@ -356,7 +363,7 @@ async def test_send_rm_command_rejects_invalid_targets(
         await send(ble_light_id)
     assert err.value.translation_key == "rm_device_not_found"
     with pytest.raises(ServiceValidationError) as err:
-        await send(fan_id, "not_a_command")
+        await send(vacuum_id, "not_a_command")
     assert err.value.translation_key == "rm_command_not_supported"
     removed = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -369,7 +376,7 @@ async def test_send_rm_command_rejects_invalid_targets(
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     with pytest.raises(ServiceValidationError) as err:
-        await send(fan_id)
+        await send(vacuum_id)
     assert err.value.translation_key == "rm_device_not_found"
     mock_send.assert_not_awaited()
 

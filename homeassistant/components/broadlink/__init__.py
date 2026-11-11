@@ -234,6 +234,10 @@ def _async_cleanup_stale_magic_registry_entries(
             if device.rm_profile in {RMProfile.WATER_HEATER, RMProfile.HUMIDIFIER}
         ),
         *(
+            (Platform.VACUUM, f"{base}_{device.stable_id}")
+            for device in family.rm_vacuum_devices
+        ),
+        *(
             (Platform.SWITCH, f"{base}_{device.stable_id}_{channel}")
             for device in family.rm_relay_devices
             for channel in rm_relay_channels(device)

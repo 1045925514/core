@@ -41,6 +41,7 @@ MAGIC_PLATFORMS: Final = [
     Platform.MEDIA_PLAYER,
     Platform.SCENE,
     Platform.SWITCH,
+    Platform.VACUUM,
 ]
 
 
