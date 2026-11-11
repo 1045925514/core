@@ -170,3 +170,11 @@ class FamilyCoordinator(DataUpdateCoordinator[GatewaySet]):
         )
         _ensure_sent(sent)
         await self.gateway_set.send_status_query([short_addr])
+
+    async def async_send_curtain(
+        self,
+        device: ImportedDevice,
+        payload: bytes,
+    ) -> None:
+        """Send one curtain command and request its reported position."""
+        await self.async_send_payloads(device, [payload])

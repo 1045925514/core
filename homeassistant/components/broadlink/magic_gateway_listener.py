@@ -109,6 +109,7 @@ class GatewayListenerManager:
         for device in gateway_set.family.devices:
             if device.short_addr is not None and device.kind in {
                 DeviceKind.AC,
+                DeviceKind.CURTAIN,
                 DeviceKind.LIGHT,
                 DeviceKind.SWITCH,
                 DeviceKind.PLUG,

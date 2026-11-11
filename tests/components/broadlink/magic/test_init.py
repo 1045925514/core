@@ -144,6 +144,11 @@ async def test_setup_devices_remote_and_unload(
         DOMAIN,
         "family-1_aabbccddeeff_4_1",
     )
+    curtain_entity_id = entity_registry.async_get_entity_id(
+        "cover",
+        DOMAIN,
+        "family-1_aabbccddeeff_5",
+    )
     assert switch_channel_1 is not None
     assert switch_channel_2 is not None
     assert (
@@ -154,6 +159,7 @@ async def test_setup_devices_remote_and_unload(
         hass.states.get(switch_channel_2).attributes["friendly_name"]
         == "Wall panel Channel 2"
     )
+    assert curtain_entity_id is not None
     living_room_area = area_registry.async_get_area_by_name("Living room")
     assert living_room_area is not None
     climate_entity = entity_registry.async_get("climate.whole_home_air_conditioner")
@@ -272,6 +278,65 @@ async def test_setup_devices_remote_and_unload(
     coordinator.async_set_updated_data(coordinator.gateway_set)
     await hass.async_block_till_done()
     assert hass.states.get(switch_channel_1).state == "on"
+
+    mock_send.reset_mock()
+    await hass.services.async_call(
+        "cover",
+        "open_cover",
+        {ATTR_ENTITY_ID: curtain_entity_id},
+        blocking=True,
+    )
+    assert mock_send.await_args.args[0] == 259
+    assert mock_send.await_args.args[1] == [b"\x01\xff\x00\xff\x00\x00"]
+
+    mock_send.reset_mock()
+    await hass.services.async_call(
+        "cover",
+        "set_cover_position",
+        {ATTR_ENTITY_ID: curtain_entity_id, "position": 60},
+        blocking=True,
+    )
+    assert mock_send.await_args.args[1] == [b"\x00\x3c\x00\xff\x00\x00"]
+    curtain_state = hass.states.get(curtain_entity_id)
+    assert curtain_state.attributes["current_position"] == 60
+    coordinator._handle_fastcon_report(259, bytes.fromhex("03ff80545000"))
+    await hass.async_block_till_done()
+    assert hass.states.get(curtain_entity_id).attributes["current_position"] == 60
+    coordinator._handle_fastcon_report(259, bytes.fromhex("0028ff000000"))
+    await hass.async_block_till_done()
+    curtain_state = hass.states.get(curtain_entity_id)
+    assert curtain_state.attributes["current_position"] == 40
+    assert curtain_state.state == "open"
+    coordinator._handle_fastcon_report(259, bytes.fromhex("0128ff000000"))
+    await hass.async_block_till_done()
+    assert hass.states.get(curtain_entity_id).state == "opening"
+    coordinator._handle_fastcon_report(259, bytes.fromhex("0228ff000000"))
+    await hass.async_block_till_done()
+    assert hass.states.get(curtain_entity_id).state == "closing"
+    await hass.services.async_call(
+        "cover",
+        "set_cover_position",
+        {ATTR_ENTITY_ID: curtain_entity_id, "position": 75},
+        blocking=True,
+    )
+    assert hass.states.get(curtain_entity_id).state == "open"
+    coordinator._handle_fastcon_report(259, bytes.fromhex("0128ff000000"))
+    await hass.async_block_till_done()
+    await hass.services.async_call(
+        "cover",
+        "stop_cover",
+        {ATTR_ENTITY_ID: curtain_entity_id},
+        blocking=True,
+    )
+    assert hass.states.get(curtain_entity_id).state == "open"
+    coordinator._handle_fastcon_report(259, bytes.fromhex("0301ff000000"))
+    await hass.async_block_till_done()
+    curtain_state = hass.states.get(curtain_entity_id)
+    assert curtain_state.attributes["current_position"] == 1
+    assert curtain_state.state == "closed"
+    coordinator._handle_fastcon_report(259, bytes.fromhex("0000ff000000"))
+    await hass.async_block_till_done()
+    assert hass.states.get(curtain_entity_id).state == "closed"
 
     mock_send.reset_mock()
     await hass.services.async_call(

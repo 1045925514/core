@@ -186,6 +186,10 @@ def _async_cleanup_stale_magic_registry_entries(
             for device in family.switch_devices
             for channel in range(device.channel_count)
         ),
+        *(
+            (Platform.COVER, f"{base}_{device.stable_id}")
+            for device in family.curtain_devices
+        ),
     }
     entity_registry = er.async_get(hass)
     for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
@@ -208,6 +212,7 @@ def _async_cleanup_stale_magic_registry_entries(
                 *family.climate_devices,
                 *family.light_devices,
                 *family.switch_devices,
+                *family.curtain_devices,
             )
         ),
     }
